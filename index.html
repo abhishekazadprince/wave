@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
+    <meta name="description" content="Discrete Causal Generator Lab">
+    <title>Discrete Causal Lab</title>
+    <!-- MANIFEST (Inline for demo purposes, usually external) -->
+    <link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjoiRGlzY3JldGUgQ2F1c2FsIExhYiIsInNob3J0X25hbWUiOiJDYXVzYWxpdHkiLCJkaXNwbGF5IjoiZnVsbHNjcmVlbiIsImJhY2tncm91bmRfY29sb3IiOiIjMDAwMDAwIiwidGhlbWVfY29sb3IiOiIjMDAwMDAwIiwiaWNvbnMiOlt7InNyYyI6Imh0dHBzOi8vaW1nLmljb25zOC5jb20vY29sb3IvMTkyL2RvbXluby5wbmciLCJzaXplcyI6IjE5MngxOTIiLCJ0eXBlIjoiaW1hZ2UvcG5nIn1dfQ==">
+    
+    <link rel="apple-touch-icon" href="https://img.icons8.com/color/192/domyno.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Causality">
+    
+    <!-- LIBRARIES -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- KaTeX with Auto-Render for Mixed Content -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- PDF GENERATION -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+        /* --- CORE RESET --- */
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none;}
+        :root { --bg: #000000; --accent: #f59e0b; --glass: rgba(10, 10, 18, 0.90); --border: rgba(255,255,255,0.15); }
+        body { background: var(--bg); color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; height: 100dvh; width: 100vw; overflow: hidden; margin: 0; position: fixed; }
+        
+        /* LAYOUT & ANIMATION */
+        #app-container { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
+        .page { position: absolute; inset: 0; transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); background: var(--bg); z-index: 10; display: flex; flex-direction: column; }
+        .page.hidden-right { transform: translateX(100%); z-index: 20; }
+        .page.hidden-left { transform: translateX(-30%); opacity: 0.5; }
+        
+        /* CANVAS */
+        canvas { width: 100%; height: 100%; outline: none; display: block; touch-action: none;}
+        
+        /* UI ELEMENTS */
+        .glass { background: var(--glass); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--border); }
+        .glass-panel { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 0.5rem; }
+        .btn-round { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.08); border: 1px solid var(--border); transition: 0.2s; color: white; cursor: pointer; }
+        .btn-round:active { transform: scale(0.9); background: var(--accent); color: black; }
+        .stat-row { display: flex; justify-content: space-between; font-size: 9px; font-family: monospace; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 4px 0; }
+        .stat-lbl { opacity: 0.6; }
+        .stat-val { color: var(--accent); }
+        .disabled-overlay { position:absolute; inset:0; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; text-transform:uppercase; font-size:10px; font-weight:bold; letter-spacing:1px; color:#fff; z-index:50; backdrop-filter:blur(2px); }
+        
+        /* TAB SYSTEM */
+        .tab-scroller { display: flex; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; white-space: nowrap; mask-image: linear-gradient(to right, black 90%, transparent 100%); }
+        .tab-scroller::-webkit-scrollbar { display: none; }
+        .tab-btn { padding: 12px 16px; font-size: 10px; font-weight: 800; opacity: 0.5; transition: 0.2s; border-bottom: 2px solid transparent; letter-spacing: 0.05em; color: #94a3b8; }
+        .tab-btn.active { opacity: 1; color: var(--accent); border-color: var(--accent); }
+        
+        /* SLIDERS */
+        input[type=range] { -webkit-appearance: none; background: transparent; height: 24px; width: 100%; cursor: pointer; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--accent); margin-top: -6px; box-shadow: 0 0 10px var(--accent); transition: transform 0.1s; }
+        input[type=range]:active::-webkit-slider-thumb { transform: scale(1.3); }
+
+        /* TEXT SECTIONS */
+        .info-section h3 { color: var(--accent); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.25rem; font-weight: 800; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 2px; margin-top: 1rem; }
+        .info-section p { font-size: 0.8rem; line-height: 1.6; opacity: 0.8; margin-bottom: 0.5rem; }
+        .info-section li { font-size: 0.8rem; opacity: 0.7; list-style: disc; margin-left: 1rem; }
+        .boxed-math { padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--accent); border-radius: 4px; margin: 10px 0; text-align: center; font-family: monospace; color: #fff; }
+
+        /* UTILS */
+        .safe-top { padding-top: max(16px, env(safe-area-inset-top)); }
+        .safe-bottom { padding-bottom: max(32px, env(safe-area-inset-bottom)); }
+        .spinner { border: 2px solid rgba(255,255,255,0.1); border-left-color: var(--accent); border-radius: 50%; width: 16px; height: 16px; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* CINEMA MODE */
+        .cinema-mode #ui-layer, .cinema-mode #drawer { display: none !important; }
+        .cinema-mode canvas { cursor: none; }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    
+    <!-- === HOME SCREEN === -->
+    <div id="page-home" class="page">
+        <header class="p-6 safe-top bg-gradient-to-b from-slate-900 to-transparent border-b border-white/5 shrink-0">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500">Causality</h1>
+                    <p class="text-[10px] uppercase tracking-[0.3em] opacity-60 font-mono mt-1">Indian Computational Form</p>
+                </div>
+                <i class="fas fa-wave-square text-4xl text-amber-500/20 rotate-12"></i>
+            </div>
+        </header>
+        
+        <div class="flex-1 overflow-y-auto p-4 safe-bottom space-y-6" id="algo-list">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+
+    <!-- === SIMULATION SCREEN === -->
+    <div id="page-sim" class="page hidden-right">
+        
+        <!-- CANVAS -->
+        <canvas id="simCanvas" class="absolute inset-0 z-0"></canvas>
+        
+        <!-- UI OVERLAY -->
+        <div id="ui-layer" class="absolute inset-0 z-10 flex flex-col pointer-events-none">
+            
+            <!-- TOP BAR -->
+            <div class="pointer-events-auto bg-gradient-to-b from-black/90 to-transparent p-4 safe-top flex items-center justify-between">
+                <button onclick="App.goBack()" class="btn-round"><i class="fas fa-arrow-left"></i></button>
+                <div class="text-center">
+                    <div id="sim-title" class="text-[10px] font-black text-amber-400 tracking-widest uppercase drop-shadow-lg">SIMULATION</div>
+                    <div class="flex gap-2 justify-center items-center mt-1">
+                        <span class="text-[8px] bg-white/10 px-1.5 py-0.5 rounded text-white/70 font-mono border border-white/5" id="sim-status">STEP-BY-STEP</span>
+                        <span id="rec-dot" class="hidden w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_red]"></span>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="App.toggleCinema()" class="btn-round text-yellow-400 border-yellow-500/30" title="Full Screen"><i class="fas fa-expand text-xs"></i></button>
+                    <button onclick="App.togglePause()" id="play-btn" class="btn-round bg-amber-600 border-none text-black shadow-lg shadow-amber-500/20"><i class="fas fa-pause text-xs"></i></button>
+                </div>
+            </div>
+
+            <!-- GESTURE HINT -->
+            <div class="flex-1 flex items-end justify-center pb-8">
+                <div id="gesture-hint" class="bg-black/60 backdrop-blur px-4 py-2 rounded-full border border-white/10 text-[10px] text-amber-400 font-mono opacity-0 transition-opacity duration-500 flex items-center gap-2">
+                    <i class="fas fa-hand-pointer"></i> <span>2-Finger Pan/Zoom • 1-Finger Orbit</span>
+                </div>
+            </div>
+            
+            <!-- TOAST -->
+            <div id="toast" class="absolute top-20 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-xs px-4 py-2 rounded-full shadow-2xl border border-white/10 opacity-0 transition-opacity pointer-events-none flex items-center gap-2 z-50">
+                <i class="fas fa-info-circle text-amber-400"></i> <span id="toast-msg"></span>
+            </div>
+        </div>
+
+        <!-- DRAWER (Bottom Sheet) -->
+        <div id="drawer" class="absolute bottom-0 left-0 right-0 z-20 pointer-events-auto flex flex-col h-[65dvh] transition-transform duration-300 translate-y-0 bg-slate-950/95 backdrop-blur-2xl border-t border-white/10 rounded-t-3xl shadow-[0_-10px_60px_rgba(0,0,0,0.7)]">
+            
+            <!-- HANDLE -->
+            <div class="w-full h-7 flex items-center justify-center shrink-0 cursor-pointer active:opacity-50" onclick="App.toggleDrawer()">
+                <div class="w-12 h-1 bg-white/20 rounded-full"></div>
+            </div>
+
+            <!-- TABS -->
+            <div class="border-b border-white/10 shrink-0">
+                <div class="tab-scroller px-2">
+                    <button onclick="App.setTab('controls')" class="tab-btn active" data-tab="controls">GENERATOR</button>
+                    <button onclick="App.setTab('numerics')" class="tab-btn" data-tab="numerics">STEPPER</button>
+                    <button onclick="App.setTab('phase')" class="tab-btn" data-tab="phase">MAP</button>
+                    <button onclick="App.setTab('graph')" class="tab-btn" data-tab="graph">HISTORY</button>
+                    <button onclick="App.setTab('data')" class="tab-btn" data-tab="data">TABLE</button>
+                    <button onclick="App.setTab('info')" class="tab-btn" data-tab="info">THEORY</button>
+                </div>
+            </div>
+
+            <!-- CONTENT AREA -->
+            <div class="flex-1 overflow-y-auto p-5 pb-24 relative bg-black/10" id="drawer-content">
+                
+                <!-- 1. CONTROLS -->
+                <div id="tab-controls" class="space-y-6">
+                    <div class="glass-panel p-4 flex items-center justify-center min-h-[80px] relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-orange-500/5 opacity-50"></div>
+                        <div id="katex-eq" class="text-sm relative z-10 text-amber-100"></div>
+                    </div>
+
+                    <div class="space-y-5">
+                        <div class="control-group">
+                            <div class="flex justify-between text-[10px] mb-2 opacity-80"><span class="font-bold uppercase tracking-wider text-amber-400">Generator Alpha (α)</span><span id="lbl-k" class="font-mono">0.05</span></div>
+                            <input type="range" id="inp-k" min="-0.2" max="0.2" step="0.001" value="0.05">
+                        </div>
+                         <!-- Extra Controls for Wall Logic -->
+                        <div id="wall-control" class="control-group hidden">
+                            <div class="flex justify-between text-[10px] mb-2 opacity-80"><span class="font-bold uppercase tracking-wider text-red-400">Wall Position (N)</span><span id="lbl-n" class="font-mono">50</span></div>
+                            <input type="range" id="inp-n" min="10" max="200" step="1" value="50">
+                        </div>
+
+                        <div class="glass-panel p-4 space-y-4 border-l-2 border-amber-500/50">
+                            <div class="flex justify-between items-center">
+                                <span class="text-[10px] font-bold text-amber-500 uppercase"><i class="fas fa-cube mr-1"></i> 3D Visualization</span>
+                                <input type="checkbox" id="inp-3d" class="accent-amber-500 w-4 h-4 cursor-pointer">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div><div class="text-[9px] opacity-60 mb-1">Tilt X</div><input type="range" id="inp-rotX" min="-90" max="90" value="0"></div>
+                                <div><div class="text-[9px] opacity-60 mb-1">Zoom</div><input type="range" id="inp-zoom" min="0.1" max="5" step="0.1" value="1"></div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3 text-[10px] font-bold">
+                            <button onclick="App.toggleAudio()" class="glass-panel p-3 text-left hover:bg-white/5 active:bg-white/10 flex items-center gap-2"><i class="fas fa-volume-up text-amber-400"></i> Sonify Steps</button>
+                            <button onclick="App.toggleRec()" class="glass-panel p-3 text-left hover:bg-white/5 active:bg-white/10 flex items-center gap-2"><i class="fas fa-video text-red-400"></i> Record MP4</button>
+                            <label class="glass-panel p-3 flex items-center gap-2 cursor-pointer"><input type="checkbox" id="inp-trail" checked class="accent-amber-400"> Show Trails</label>
+                            <label class="glass-panel p-3 flex items-center gap-2 cursor-pointer"><input type="checkbox" id="inp-glow" class="accent-amber-400"> Glow FX</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. NUMERICS (REPURPOSED AS STEPPER) -->
+                <div id="tab-numerics" class="hidden h-full space-y-6">
+                    <!-- Controls -->
+                    <div class="glass-panel p-4 space-y-4 relative">
+                         <div id="solver-lock-msg" class="absolute top-0 right-0 bg-amber-500/20 text-amber-300 text-[8px] px-2 py-1 rounded-bl">DISCRETE MAP</div>
+
+                        <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                            <h3 class="text-[10px] font-bold text-amber-400 uppercase tracking-widest">Discrete Control</h3>
+                            <button onclick="App.reset()" class="px-2 py-1 bg-white/10 rounded text-[9px] hover:bg-white/20">RESET n=0</button>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-[9px] font-mono opacity-80"><span>Steps per Frame</span><span id="lbl-dt">1</span></div>
+                            <input type="range" id="inp-dt" min="1" max="10" step="1" value="1">
+                        </div>
+                        <div class="p-2 bg-black/30 rounded border border-white/5 text-[9px] font-mono text-amber-200">
+                            Current Step: n = <span id="val-n" class="text-white font-bold text-lg">0</span>
+                        </div>
+                    </div>
+
+                    <!-- Diagnostics -->
+                    <div class="glass-panel p-4 space-y-2">
+                         <h3 class="text-[10px] font-bold text-red-400 uppercase tracking-widest border-b border-white/10 pb-2 mb-2">State Diagnostics</h3>
+                         <div class="stat-row"><span class="stat-lbl">Wave Value u_n</span><span id="val-u" class="stat-val">--</span></div>
+                         <div class="stat-row"><span class="stat-lbl">Change (u_n+1 - u_n)</span><span id="val-du" class="stat-val">--</span></div>
+                         <div class="stat-row"><span class="stat-lbl">Ratio (u_n+1 / u_n)</span><span id="val-ratio" class="stat-val">--</span></div>
+                         <div class="stat-row"><span class="stat-lbl">Causality Check</span><span class="stat-val text-green-400">FORWARD ONLY</span></div>
+                    </div>
+                </div>
+
+                <!-- 3. PHASE (MAP) -->
+                <div id="tab-phase" class="hidden h-full flex flex-col">
+                    <div class="flex-1 glass-panel relative overflow-hidden border border-amber-500/30 bg-black">
+                        <canvas id="phaseCanvas"></canvas>
+                        <button onclick="App.clearCanvas('phaseCanvas')" class="absolute top-3 right-3 text-[9px] bg-black/50 px-2 py-1 rounded hover:bg-white/20 transition">CLR</button>
+                         <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20 text-[10px] uppercase font-bold tracking-widest">u_n vs u_{n-1}</div>
+                    </div>
+                </div>
+
+                <!-- 4. GRAPH (HISTORY) -->
+                <div id="tab-graph" class="hidden h-full flex flex-col">
+                    <div class="flex-1 glass-panel p-2 relative bg-black/20">
+                        <canvas id="graphCanvas"></canvas>
+                    </div>
+                     <div class="text-[8px] text-white/30 text-center mt-1">Showing History of u_n (Step n)</div>
+                </div>
+
+                <!-- 5. DATA -->
+                <div id="tab-data" class="hidden h-full flex flex-col">
+                    <div class="flex justify-end gap-2 mb-3">
+                         <button onclick="App.exportCSV()" class="bg-blue-600/20 text-blue-300 border border-blue-500/50 text-[9px] px-3 py-1.5 rounded hover:bg-blue-600/30 transition">CSV</button>
+                         <button onclick="App.exportPDF()" class="bg-red-600/20 text-red-300 border border-red-500/50 text-[9px] px-3 py-1.5 rounded hover:bg-red-600/30 transition">FULL PDF REPORT</button>
+                    </div>
+                    <div class="flex-1 glass-panel overflow-auto rounded-lg border border-white/5">
+                        <table class="w-full text-[9px] font-mono text-left">
+                            <thead class="bg-white/5 sticky top-0 text-amber-400 backdrop-blur"><tr><th class="p-3">STEP (n)</th><th>VALUE (u_n)</th><th>DELTA</th></tr></thead>
+                            <tbody id="data-body" class="divide-y divide-white/5 text-white/70"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 6. INFO (THEORY) -->
+                <div id="tab-info" class="hidden h-full p-2">
+                    <h2 id="info-heading" class="text-xl font-bold text-amber-400 mb-4 border-b border-white/10 pb-2"></h2>
+                    <div id="info-body" class="info-section">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+/* --- DISCRETE KERNEL --- */
+const Physics = {
+    // Discrete Step Solvers
+    discrete: {
+        outward: (n, u, p) => {
+            // u[0] is u_n, u[1] is u_{n-1}
+            // u_{n+1} = (1+alpha)u_n
+            const next = (1 + p.alpha) * u[0];
+            return [next, u[0], 0];
+        },
+        backward: (n, u, p) => {
+            // Forbidden: u_{n+1} = (1-alpha)u_n
+            const next = (1 - p.alpha) * u[0];
+            return [next, u[0], 0];
+        },
+        wall: (n, u, p) => {
+            // If n >= N, u = 0. Else propagate.
+            if(n >= p.N) return [0, u[0], 0];
+            const next = (1 + p.alpha) * u[0];
+            return [next, u[0], 0]; 
+        },
+        open: (n, u, p) => {
+            // Dynamic open space condition
+            const next = (1 + p.alpha) * u[0];
+            return [next, u[0], 0];
+        },
+        radiation: (n, u, p) => {
+            // u_{n+1} - u_n = alpha * u_n  => u_{n+1} = (1+alpha)u_n
+            const next = u[0] + p.alpha * u[0];
+            return [next, u[0], 0];
+        },
+        sine: (n, u, p) => {
+            // Aryabhata's Rule: u_{n+1} - u_n = (u_n - u_{n-1}) - epsilon * u_n
+            // u_{n+1} = 2u_n - u_{n-1} - epsilon * u_n
+            // epsilon related to alpha squared roughly
+            const eps = p.alpha * p.alpha;
+            const next = 2*u[0] - u[1] - eps*u[0];
+            return [next, u[0], 0];
+        }
+    }
+};
+
+/* --- MODELS DATABASE --- */
+const Models = [
+    { 
+        id: 'outward', 
+        title: 'The Outward Generator', 
+        eq: 'u_{n+1} = (1+\\alpha)u_n', 
+        desc: 'Standard generator rule. Produces the next state using only the previous state. Pure recursion with no reference to future steps.',
+        init: [1, 1, 0], // u_0, u_{-1}
+        p: (k, n_val) => ({alpha: k}),
+        fn: 'outward'
+    },
+    { 
+        id: 'backward', 
+        title: 'Forbidden Backward', 
+        eq: 'u_{n+1} = (1-\\alpha)u_n', 
+        desc: 'Mathematically valid but forbidden. Represents a backward-moving component. Sommerfeld condition = Do not use this generator.',
+        init: [1, 1, 0],
+        p: (k, n_val) => ({alpha: k}),
+        fn: 'backward'
+    },
+    { 
+        id: 'radiation', 
+        title: 'Discrete Radiation', 
+        eq: 'u_{n+1} - u_n = \\alpha u_n', 
+        desc: 'The exact discrete analogue of the radiation condition. Local, iterative, directional, causal.',
+        init: [1, 1, 0],
+        p: (k, n_val) => ({alpha: k}),
+        fn: 'radiation'
+    },
+    { 
+        id: 'wall', 
+        title: 'Wall vs Open Space', 
+        eq: '\\text{If } n \\ge N, u_n = 0', 
+        desc: 'A wall is fixed by a value (0). Open space is fixed by a rule of continuation. Use slider N to set wall.',
+        init: [1, 1, 0],
+        p: (k, n_val) => ({alpha: k, N: n_val}),
+        fn: 'wall',
+        hasWall: true
+    },
+    { 
+        id: 'sine', 
+        title: 'Aryabhata Sine Rule', 
+        eq: 'u_{n+1} - u_n = (u_n - u_{n-1}) - \\epsilon u_n', 
+        desc: 'Historical 2nd-order discrete generator for oscillations (sine tables). Uses two previous states.',
+        init: [0, -0.1, 0], // Start near 0 with slope
+        p: (k, n_val) => ({alpha: k}),
+        fn: 'sine'
+    }
+];
+
+/* --- APP CONTROLLER --- */
+const App = {
+    state: { active: null, running: false, step: 0, y: [], traj: [], dataLog: [], view: { zoom: 1, cx: 0, cy: 0, rotX: 0, rotY: 0 }, params: { k: 0.05, N: 50, is3D: false, trails: true, glow: false }, numerics: { stepsPerFrame: 1 }, input: { ptrs: new Map(), prevDist: 0 }, rec: { on: false }, audio: { on: false, ctx: null } },
+
+    init() {
+        this.populateMenu();
+        this.setupInputs();
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+        this.loadModel(Models[0]); // Default to Outward
+        this.initChart();
+        requestAnimationFrame(() => this.loop());
+        
+        // Populate Theory Tab with exact text
+        this.populateTheory();
+    },
+
+    populateTheory() {
+        const t = document.getElementById('info-body');
+        const h = document.getElementById('info-heading');
+        h.innerText = "Theory: Discrete & Continuous";
+        
+        const discreteContent = `
+            <div class="space-y-4">
+                <h3 class="text-amber-400 font-bold uppercase">Part I: Discrete Form</h3>
+                <h3 class="text-amber-400 font-bold uppercase text-xs">1. What is a “state” in discrete form?</h3>
+                <p>Take a line divided into equal steps: x₀, x₁, x₂, x₃... At each step, the system has a state: uₙ = value of the wave at step n. This is exactly how sine tables, astronomical tables, and calendar tables were historically constructed.</p>
+                
+                <h3 class="text-amber-400 font-bold uppercase text-xs">2. The generator rule (outgoing wave)</h3>
+                <p>Sommerfeld’s continuous rule “rate of change proportional to value” becomes, in discrete form:</p>
+                <div class="boxed-math">uₙ₊₁ = (1+α)uₙ</div>
+                <p>This is the generator. It produces the next state using only the previous state. No reference to future steps. This is pure recursion.</p>
+
+                <h3 class="text-amber-400 font-bold uppercase text-xs">3. Why this represents outward motion</h3>
+                <p>Apply the rule repeatedly: u₁ = (1+α)u₀, u₂ = (1+α)²u₀... The wave propagates forward step by step. There is memory of the past, no dependence on the future. This is causality in raw form.</p>
+
+                <h3 class="text-amber-400 font-bold uppercase text-xs">4. The forbidden backward generator</h3>
+                <p>There exists another mathematically valid recursion:</p>
+                <div class="boxed-math">uₙ₊₁ = (1-α)uₙ</div>
+                <p>This corresponds to a backward-moving component. Sommerfeld’s condition, in discrete language, is simply: Do not allow this generator. That’s it. No reflection is possible if the backward generator is never used.</p>
+
+                <h3 class="text-amber-400 font-bold uppercase text-xs">5. Discrete radiation condition</h3>
+                <div class="boxed-math">uₙ₊₁ - uₙ = α uₙ</div>
+                <p>This is local, iterative, directional, and causal. No “at infinity”. No boundary value. No limit.</p>
+
+                <h3 class="text-amber-400 font-bold uppercase text-xs">6. Wall vs open space</h3>
+                <p><strong>Wall:</strong> u_N = 0. That’s it. No recursion beyond that point.<br>
+                <strong>Open space:</strong> uₙ₊₁ = (1+α)uₙ for all n ≥ N. The system is not stopped. It is continued by rule.</p>
+                
+                <h3 class="text-amber-400 font-bold uppercase text-xs">7. Where causality lives</h3>
+                <p>The recursion is one-step. Information flows only past → future. Causality is not assumed. It emerges automatically.</p>
+            </div>
+        `;
+
+        const continuousContent = `
+            <hr class="border-white/10 my-8">
+            <h2 class="text-xl font-bold text-amber-400 mb-4 border-b border-white/10 pb-2">Part II: The Actual Mathematics</h2>
+            
+            <div class="space-y-6">
+                <!-- 1. Exact Math -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">1. The Exact Mathematical Statement</h3>
+                    <p>The condition appears in the study of the Helmholtz equation (1D):</p>
+                    <div class="py-2 text-center text-amber-100">$$ \\frac{d^2 u}{dx^2} + k^2 u = 0 $$</div>
+                    <p>The general solution is:</p>
+                    <div class="py-2 text-center text-amber-100">$$ u(x) = A e^{ikx} + B e^{-ikx} $$</div>
+                    <p>Both are mathematically valid, but physics does not allow both. Compute derivatives:</p>
+                    <div class="py-2 text-center text-amber-100">$$ \\frac{du}{dx} - ik u = -2ik B e^{-ikx} $$</div>
+                    <p>Hence, the condition to kill the incoming wave is:</p>
+                    <div class="boxed-math py-3">$$ \\lim_{x\\to +\\infty} \\left( \\frac{du}{dx} - ik u \\right) = 0 \\quad \\Longleftrightarrow \\quad B=0 $$</div>
+                    <p class="text-[9px] opacity-70 mt-1">This is not interpretation. This is algebra.</p>
+                </div>
+
+                <!-- 2. Historical -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">2. Sommerfeld’s Original Formulation</h3>
+                    <p>Arnold Sommerfeld introduced this in <em>"Die Greensche Funktion der Schwingungsgleichung"</em> (1897). His original 3D statement for large radius $r$ was:</p>
+                    <div class="boxed-math py-3">$$ \\lim_{r \\to \\infty} r \\left( \\frac{\\partial u}{\\partial r} - ik u \\right) = 0 $$</div>
+                    <p>In 1D, the factor $r$ disappears, leaving:</p>
+                    <div class="py-2 text-center text-amber-100">$$ \\lim_{x \\to \\infty} \\left( \\frac{du}{dx} - ik u \\right) = 0 $$</div>
+                    <p>Nothing more. Nothing less.</p>
+                </div>
+
+                <!-- 3. Why needed -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">3. Why this is mathematically non-trivial</h3>
+                    <p>Without the radiation condition:</p>
+                    <ul class="list-disc pl-4 space-y-1 text-xs opacity-80">
+                        <li>The Helmholtz equation has infinitely many solutions.</li>
+                        <li>Boundary value problems become non-unique.</li>
+                        <li>Green’s functions are undefined.</li>
+                    </ul>
+                    <p class="mt-2 italic border-l-2 border-amber-500/50 pl-3">"The differential equation alone does not encode causality. Causality must be enforced at infinity."</p>
+                </div>
+
+                <!-- 4. Not a Boundary Condition -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">4. Not a boundary condition in the usual sense</h3>
+                    <div class="grid grid-cols-2 gap-2 text-[9px] font-mono border border-white/10 rounded p-2">
+                        <div class="text-amber-400">Dirichlet</div><div>Value fixed at point</div>
+                        <div class="text-amber-400">Neumann</div><div>Slope fixed at point</div>
+                        <div class="text-amber-400 font-bold">Sommerfeld</div><div class="font-bold">Asymptotic limit at infinity</div>
+                    </div>
+                    <p class="mt-2 text-xs">It is nonlocal, asymptotic, and cannot be imposed at a finite point exactly.</p>
+                </div>
+
+                <!-- 5. Numerics -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">5. Why numerics struggled for 70+ years</h3>
+                    <p>Computers cannot handle infinity. For decades, numerical solutions suffered from spurious reflections. The breakthrough came with Absorbing Boundary Conditions like PML (Bérenger, 1994), which is a complex deformation:</p>
+                    <div class="py-2 text-center text-amber-100">$$ \\frac{d}{dx} \\longrightarrow \\frac{1}{1+i\\sigma(x)}\\frac{d}{dx} $$</div>
+                    <p>This enforces Sommerfeld asymptotics artificially: $u(x) \\sim e^{-(\\sigma x)} e^{ikx}$.</p>
+                </div>
+
+                <!-- 6. Punchline -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">6. Conceptual Punchline</h3>
+                    <p>Differential equations are time-symmetric. Physics is not. Sommerfeld showed that asymptotic conditions encode causality.</p>
+                    <p class="mt-2 font-bold text-center text-amber-400">"Causality is not in the equation. It is in the boundary at infinity."</p>
+                </div>
+            </div>
+        `;
+
+        t.innerHTML = discreteContent + continuousContent;
+        
+        // Render Math via Auto-Render Extension
+        if(window.renderMathInElement) {
+            renderMathInElement(t, {
+                delims: [
+                    {left: "$$", right: "$$", display: true},
+                    {left: "$", right: "$", display: false}
+                ],
+                throwOnError: false
+            });
+        }
+    },
+
+    populateMenu() {
+        const l = document.getElementById('algo-list');
+        Models.forEach(m => {
+            const b = document.createElement('button');
+            b.className = "w-full text-left bg-white/5 border border-white/5 p-4 rounded mb-2 hover:border-amber-500/30 transition flex justify-between items-center group active:bg-white/10";
+            b.innerHTML = `<div><div class="font-bold text-xs group-hover:text-amber-400 transition">${m.title}</div><div class="text-[9px] opacity-60 font-mono mt-0.5">${m.eq}</div></div><i class="fas fa-play text-[10px] opacity-20 group-hover:opacity-100 transition"></i>`;
+            b.onclick = () => this.loadModel(m);
+            l.appendChild(b);
+        });
+    },
+
+    loadModel(m) {
+        this.state.active = m;
+        this.reset();
+        
+        // Update UI
+        document.getElementById('sim-title').innerText = m.title;
+        katex.render(m.eq, document.getElementById('katex-eq'), {throwOnError:false});
+        
+        document.getElementById('wall-control').classList.toggle('hidden', !m.hasWall);
+        
+        document.getElementById('page-home').classList.add('hidden-left');
+        document.getElementById('page-sim').classList.remove('hidden-right');
+    },
+
+    reset() {
+        this.state.step = 0; 
+        this.state.running = true; 
+        this.state.traj = []; 
+        this.state.dataLog = [];
+        this.state.view = { zoom: 1, cx: 0, cy: 0, rotX: 0, rotY: 0 };
+        this.state.y = [...this.state.active.init];
+        
+        ['phaseCanvas','graphCanvas'].forEach(id=>this.clearCanvas(id));
+        if(window.chart) { window.chart.data.labels=[]; window.chart.data.datasets[0].data=[]; window.chart.update(); }
+        document.getElementById('data-body').innerHTML = '';
+        this.showToast("System Reset: n=0");
+    },
+
+    loop() {
+        if(this.state.running && this.state.active) {
+            const fn = Physics.discrete[this.state.active.fn];
+            const p = this.state.active.p(this.state.params.k, this.state.params.N);
+            
+            // Execute Steps
+            for(let s=0; s<this.state.numerics.stepsPerFrame; s++) {
+                if(this.state.step > 2000) { this.state.running = false; break; } // Safety limit
+
+                const nextY = fn(this.state.step, this.state.y, p);
+                
+                // Log Data
+                if(s===0) {
+                    const u = this.state.y[0];
+                    const u_next = nextY[0];
+                    const delta = u_next - u;
+                    this.state.dataLog.push({n: this.state.step, u: u, d: delta});
+                    if(this.state.dataLog.length > 500) this.state.dataLog.shift();
+                    
+                    // Update UI Stats
+                    document.getElementById('val-n').innerText = this.state.step;
+                    document.getElementById('val-u').innerText = u.toFixed(4);
+                    document.getElementById('val-du').innerText = delta.toFixed(4);
+                    document.getElementById('val-ratio').innerText = u!==0 ? (u_next/u).toFixed(4) : "Inf";
+                }
+
+                // Push to Visual Trajectory
+                // x = step (n), y = value (u_n), z = delta
+                this.state.traj.push({x: this.state.step, y: this.state.y[0], z: nextY[0]-this.state.y[0]});
+                if(this.state.traj.length > 1000) this.state.traj.shift();
+
+                this.state.y = nextY;
+                this.state.step++;
+                
+                this.updateAudio(this.state.y[0]);
+            }
+
+            // Updates per frame
+            this.updateGraph(this.state.y[0]);
+            this.updateTable();
+            this.updatePhase();
+        }
+        this.render();
+        requestAnimationFrame(() => this.loop());
+    },
+
+    render() {
+        const cvs = document.getElementById('simCanvas');
+        const ctx = cvs.getContext('2d');
+        const w = cvs.width, h = cvs.height;
+
+        ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg');
+        ctx.fillRect(0,0,w,h);
+
+        ctx.save();
+        ctx.translate(w/2 + this.state.view.cx, h/2 + this.state.view.cy);
+        
+        // View Transformation
+        const scale = this.state.view.zoom * 2; // Base scale
+        ctx.scale(scale, scale);
+        
+        // 3D Projection Helper
+        const proj = (x,y,z) => {
+            // Map n (x) to screen X
+            // Map u (y) to screen Y
+            // Center roughly
+            const nx = (x - this.state.step + 100) * 5; // Keep current step visible
+            const ny = -y * 50; 
+            
+            if(!this.state.params.is3D) return {x: nx, y: ny};
+            
+            const yaw = this.state.view.rotX * Math.PI/180;
+            const tilt = 0.5;
+            
+            let x1 = nx;
+            let z1 = z * 50; // Map delta to depth
+            
+            // Isometric-ish
+            return {
+                x: x1 - z1,
+                y: ny + (x1+z1)*0.5
+            };
+        };
+
+        // Draw Axes (Reference)
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 1/scale;
+        ctx.beginPath(); 
+        const p0 = proj(-1000, 0, 0); const p1 = proj(1000, 0, 0);
+        ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+
+        // Draw Trajectory (The Wave discrete points)
+        if(this.state.traj.length > 1) {
+            ctx.strokeStyle = '#f59e0b'; // Amber
+            ctx.lineWidth = 2/scale;
+            if(this.state.params.glow) { ctx.shadowBlur = 15; ctx.shadowColor = '#f59e0b'; }
+            
+            // Draw lines connecting steps
+            ctx.beginPath();
+            for(let i=0; i<this.state.traj.length; i++) {
+                const p = this.state.traj[i];
+                const pt = proj(p.x, p.y, p.z);
+                i===0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
+            }
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Draw Points (Discrete Nature)
+            ctx.fillStyle = '#fff';
+            for(let i=0; i<this.state.traj.length; i+=1) { // Skip some if too dense? No, discrete is key.
+                const p = this.state.traj[i];
+                // Only draw visible points
+                if(p.x < this.state.step - 200) continue;
+                
+                const pt = proj(p.x, p.y, p.z);
+                ctx.beginPath(); ctx.arc(pt.x, pt.y, 2/scale, 0, 6.28); ctx.fill();
+                
+                // Draw Stems (Discrete signal style)
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.beginPath(); ctx.moveTo(pt.x, pt.y); 
+                const base = proj(p.x, 0, 0);
+                ctx.lineTo(base.x, base.y);
+                ctx.stroke();
+            }
+        }
+        
+        // Draw Wall if active
+        if(this.state.active.id === 'wall') {
+            const wallN = this.state.params.N;
+            const ptTop = proj(wallN, 5, 0);
+            const ptBot = proj(wallN, -5, 0);
+            
+            ctx.strokeStyle = '#ef4444'; // Red Wall
+            ctx.lineWidth = 4/scale;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath(); ctx.moveTo(ptTop.x, ptTop.y); ctx.lineTo(ptBot.x, ptBot.y); ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Text label
+            ctx.fillStyle = '#ef4444';
+            ctx.font = `${10/scale}px monospace`;
+            ctx.fillText(`WALL N=${wallN}`, ptTop.x, ptTop.y - 10/scale);
+        }
+
+        ctx.restore();
+    },
+
+    setupInputs() {
+        const c = document.getElementById('simCanvas');
+        c.addEventListener('pointerdown', e => {
+            c.setPointerCapture(e.pointerId);
+            this.state.input.ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
+            if(this.state.input.ptrs.size === 2) {
+                const p = [...this.state.input.ptrs.values()];
+                this.state.input.prevDist = Math.hypot(p[0].x-p[1].x, p[0].y-p[1].y);
+                document.getElementById('gesture-hint').style.opacity = 1;
+            }
+        });
+        c.addEventListener('pointermove', e => {
+            if(!this.state.input.ptrs.has(e.pointerId)) return;
+            const old = this.state.input.ptrs.get(e.pointerId);
+            if(this.state.input.ptrs.size === 1) {
+                const dx = e.clientX - old.x, dy = e.clientY - old.y;
+                if(this.state.params.is3D) { this.state.view.rotX += dx * 0.5; document.getElementById('inp-rotX').value = this.state.view.rotX % 360; } 
+                else { this.state.view.cx += dx; this.state.view.cy += dy; }
+            } else if(this.state.input.ptrs.size === 2) {
+                this.state.input.ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
+                const p = [...this.state.input.ptrs.values()];
+                const dist = Math.hypot(p[0].x-p[1].x, p[0].y-p[1].y);
+                const delta = dist - this.state.input.prevDist;
+                this.state.view.zoom *= (1 + delta * 0.005);
+                this.state.input.prevDist = dist;
+                document.getElementById('inp-zoom').value = this.state.view.zoom;
+            }
+            this.state.input.ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
+        });
+        c.addEventListener('pointerup', e => { this.state.input.ptrs.delete(e.pointerId); if(this.state.input.ptrs.size < 2) document.getElementById('gesture-hint').style.opacity = 0; });
+        
+        document.getElementById('inp-k').oninput = e => { this.state.params.k = parseFloat(e.target.value); document.getElementById('lbl-k').innerText = e.target.value; };
+        document.getElementById('inp-n').oninput = e => { this.state.params.N = parseInt(e.target.value); document.getElementById('lbl-n').innerText = e.target.value; this.reset(); };
+        document.getElementById('inp-3d').onchange = e => this.state.params.is3D = e.target.checked;
+        document.getElementById('inp-rotX').oninput = e => this.state.view.rotX = parseFloat(e.target.value);
+        document.getElementById('inp-zoom').oninput = e => this.state.view.zoom = parseFloat(e.target.value);
+        document.getElementById('inp-glow').onchange = e => this.state.params.glow = e.target.checked;
+        document.getElementById('inp-dt').oninput = e => { this.state.numerics.stepsPerFrame = parseInt(e.target.value); document.getElementById('lbl-dt').innerText = e.target.value; };
+    },
+
+    toggleCinema() {
+        const isCinema = document.body.classList.toggle('cinema-mode');
+        if(isCinema) {
+            if(document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen().catch(() => console.warn("Fullscreen blocked"));
+            }
+            this.showToast("Tap screen to exit");
+            document.getElementById('simCanvas').addEventListener('click', () => this.toggleCinema(), {once:true});
+        } else {
+            if(document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+        }
+    },
+    
+    toggleDrawer() { 
+        const d=document.getElementById('drawer'); 
+        const isUp = d.style.transform === 'translateY(0px)' || d.style.transform === '';
+        d.style.transform = isUp ? 'translateY(85%)' : 'translateY(0px)';
+    },
+
+    setTab(id) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector(`button[data-tab="${id}"]`).classList.add('active');
+        ['controls','numerics','phase','graph','data','info'].forEach(t => document.getElementById('tab-'+t).classList.add('hidden'));
+        document.getElementById('tab-'+id).classList.remove('hidden');
+        this.resize();
+    },
+
+    updateGraph(val) { if(!window.chart) return; window.chart.data.labels.push(this.state.step); window.chart.data.datasets[0].data.push(val); if(window.chart.data.labels.length>50) { window.chart.data.labels.shift(); window.chart.data.datasets[0].data.shift(); } if(!document.getElementById('tab-graph').classList.contains('hidden')) window.chart.update('none'); },
+    updateTable() { 
+        if(document.getElementById('tab-data').classList.contains('hidden')) return; 
+        const b = document.getElementById('data-body'); 
+        const last = this.state.dataLog[this.state.dataLog.length-1];
+        if(!last) return;
+        const r = document.createElement('tr'); 
+        r.innerHTML = `<td class="p-3 opacity-50 font-mono">${last.n}</td><td class="text-amber-400 font-bold">${last.u.toFixed(4)}</td><td class="text-white/50">${last.d.toFixed(4)}</td>`; 
+        b.prepend(r); if(b.children.length>20) b.lastChild.remove(); 
+    },
+    updatePhase() { 
+        if(document.getElementById('tab-phase').classList.contains('hidden')) return;
+        // u_n vs u_{n-1}
+        const ctx = document.getElementById('phaseCanvas').getContext('2d'); 
+        const w = ctx.canvas.width; 
+        const u = this.state.y[0];
+        const u_prev = this.state.y[1];
+        // Center roughly (assuming values around -2 to 2)
+        const scale = 20; 
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.5)'; 
+        ctx.fillRect(w/2 + u*scale, w/2 - u_prev*scale, 2, 2); 
+    },
+    
+    exportCSV() { let c = "Step,Value,Delta\n"; this.state.dataLog.forEach(p => c += `${p.n},${p.u},${p.d}\n`); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([c], {type:'text/csv'})); a.download = 'discrete_causal_data.csv'; a.click(); },
+    
+    exportPDF() { 
+        if(!window.jspdf) { this.showToast("PDF Lib not ready"); return; }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        doc.setFontSize(18); doc.setTextColor(245, 158, 11);
+        doc.text(`Discrete Causal Report`, 14, 20);
+        doc.setFontSize(10); doc.setTextColor(0,0,0);
+        doc.text(`Generator: ${this.state.active.title}`, 14, 28);
+        doc.text(`Rule: ${this.state.active.eq}`, 14, 34);
+        
+        const canvas = document.getElementById('simCanvas');
+        const imgData = canvas.toDataURL("image/jpeg", 0.7);
+        doc.addImage(imgData, 'JPEG', 14, 40, 180, 100);
+
+        if(doc.autoTable) {
+            const rows = this.state.dataLog.map(d => [d.n, d.u.toFixed(4), d.d.toFixed(4)]);
+            doc.autoTable({ head: [["Step (n)", "Value (u_n)", "Delta"]], body: rows, startY: 150, styles: { fontSize: 8, font: "courier" }, headStyles: { fillColor: [245, 158, 11] } });
+        }
+        doc.save("Causal_Report.pdf"); 
+    },
+    
+    toggleRec() { if(!this.state.rec.on) { try { const s = document.getElementById('simCanvas').captureStream(30); this.state.rec.media = new MediaRecorder(s); this.state.rec.chunks = []; this.state.rec.media.ondataavailable = e => this.state.rec.chunks.push(e.data); this.state.rec.media.onstop = () => { const blob = new Blob(this.state.rec.chunks, {type:'video/webm'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'sim.webm'; a.click(); }; this.state.rec.media.start(); this.state.rec.on = true; document.getElementById('rec-dot').classList.remove('hidden'); this.showToast("Recording..."); } catch(e) { this.showToast("Not Supported"); } } else { this.state.rec.media.stop(); this.state.rec.on = false; document.getElementById('rec-dot').classList.add('hidden'); this.showToast("Saved"); } },
+    togglePause() { this.state.running = !this.state.running; document.getElementById('play-btn').innerHTML = this.state.running ? '<i class="fas fa-pause text-xs"></i>' : '<i class="fas fa-play text-xs"></i>'; },
+    toggleAudio() { 
+        if(!this.state.audio.ctx) { const A=window.AudioContext||window.webkitAudioContext; this.state.audio.ctx=new A(); this.state.audio.osc=this.state.audio.ctx.createOscillator(); this.state.audio.gain=this.state.audio.ctx.createGain(); this.state.audio.osc.connect(this.state.audio.gain); this.state.audio.gain.connect(this.state.audio.ctx.destination); this.state.audio.osc.start(); this.state.audio.gain.gain.value=0; } 
+        this.state.audio.on = !this.state.audio.on; this.showToast(this.state.audio.on?"Audio ON":"Audio OFF"); 
+    },
+    updateAudio(v) { if(this.state.audio.on) { this.state.audio.osc.frequency.setTargetAtTime(200+Math.abs(v)*200, this.state.audio.ctx.currentTime, 0.05); this.state.audio.gain.gain.setTargetAtTime(0.1, this.state.audio.ctx.currentTime, 0.05); } else if(this.state.audio.ctx) { this.state.audio.gain.gain.setTargetAtTime(0, this.state.audio.ctx.currentTime, 0.05); } },
+    
+    goBack() { this.state.running=false; document.getElementById('page-home').classList.remove('hidden-left'); document.getElementById('page-sim').classList.add('hidden-right'); },
+    clearCanvas(id) { const c=document.getElementById(id); if(c) c.getContext('2d').clearRect(0,0,c.width,c.height); },
+    showToast(msg) { const t=document.getElementById('toast'); document.getElementById('toast-msg').innerText=msg; t.style.opacity=1; setTimeout(()=>t.style.opacity=0, 2000); },
+    resize() { ['simCanvas','phaseCanvas','graphCanvas'].forEach(id => { const el = document.getElementById(id); if(el && el.offsetParent) { el.width = el.clientWidth; el.height = el.clientHeight; } }); },
+    initChart() { const ctx = document.getElementById('graphCanvas').getContext('2d'); window.chart = new Chart(ctx, { type: 'line', data: { labels: [], datasets: [{ label: 'Val', data: [], borderColor: '#f59e0b', borderWidth: 2, pointRadius: 0 }] }, options: { responsive: true, maintainAspectRatio: false, animation: false, scales: { x: {display:false}, y: {grid:{color:'rgba(255,255,255,0.05)'}} }, plugins: { legend: {display:false} } } }); }
+};
+
+App.init();
+    // --- PWA SERVICE WORKER REGISTRATION ---
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').then(() => console.log('SW Registered')).catch(e => console.log('SW Fail', e));
+        });
+    }
+</script>
+</body>
+</html>
