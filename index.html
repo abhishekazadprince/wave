@@ -174,12 +174,12 @@
 
                     <div class="space-y-5">
                         <div class="control-group">
-                            <div class="flex justify-between text-[10px] mb-2 opacity-80"><span class="font-bold uppercase tracking-wider text-amber-400">Generator Alpha (α)</span><span id="lbl-k" class="font-mono">0.05</span></div>
+                            <div class="flex justify-between text-[10px] mb-2 opacity-80"><span class="font-bold uppercase tracking-wider text-amber-400">Generator Alpha (α) / Freq (k)</span><span id="lbl-k" class="font-mono">0.05</span></div>
                             <input type="range" id="inp-k" min="-0.2" max="0.2" step="0.001" value="0.05">
                         </div>
-                         <!-- Extra Controls for Wall Logic -->
+                         <!-- Extra Controls for Wall/PML Logic -->
                         <div id="wall-control" class="control-group hidden">
-                            <div class="flex justify-between text-[10px] mb-2 opacity-80"><span class="font-bold uppercase tracking-wider text-red-400">Wall Position (N)</span><span id="lbl-n" class="font-mono">50</span></div>
+                            <div class="flex justify-between text-[10px] mb-2 opacity-80"><span class="font-bold uppercase tracking-wider text-red-400" id="lbl-n-title">Wall Position (N)</span><span id="lbl-n" class="font-mono">50</span></div>
                             <input type="range" id="inp-n" min="10" max="200" step="1" value="50">
                         </div>
 
@@ -225,9 +225,10 @@
                     <!-- Diagnostics -->
                     <div class="glass-panel p-4 space-y-2">
                          <h3 class="text-[10px] font-bold text-red-400 uppercase tracking-widest border-b border-white/10 pb-2 mb-2">State Diagnostics</h3>
-                         <div class="stat-row"><span class="stat-lbl">Wave Value u_n</span><span id="val-u" class="stat-val">--</span></div>
+                         <div class="stat-row"><span class="stat-lbl">Wave Value u_n (Real)</span><span id="val-u" class="stat-val">--</span></div>
+                         <div class="stat-row"><span class="stat-lbl">Imaginary Part</span><span id="val-im" class="stat-val">--</span></div>
+                         <div class="stat-row"><span class="stat-lbl">Magnitude |u|</span><span id="val-mag" class="stat-val">--</span></div>
                          <div class="stat-row"><span class="stat-lbl">Change (u_n+1 - u_n)</span><span id="val-du" class="stat-val">--</span></div>
-                         <div class="stat-row"><span class="stat-lbl">Ratio (u_n+1 / u_n)</span><span id="val-ratio" class="stat-val">--</span></div>
                          <div class="stat-row"><span class="stat-lbl">Causality Check</span><span class="stat-val text-green-400">FORWARD ONLY</span></div>
                     </div>
                 </div>
@@ -237,7 +238,7 @@
                     <div class="flex-1 glass-panel relative overflow-hidden border border-amber-500/30 bg-black">
                         <canvas id="phaseCanvas"></canvas>
                         <button onclick="App.clearCanvas('phaseCanvas')" class="absolute top-3 right-3 text-[9px] bg-black/50 px-2 py-1 rounded hover:bg-white/20 transition">CLR</button>
-                         <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20 text-[10px] uppercase font-bold tracking-widest">u_n vs u_{n-1}</div>
+                         <div id="phase-label" class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20 text-[10px] uppercase font-bold tracking-widest">u_n vs u_{n-1}</div>
                     </div>
                 </div>
 
@@ -246,7 +247,7 @@
                     <div class="flex-1 glass-panel p-2 relative bg-black/20">
                         <canvas id="graphCanvas"></canvas>
                     </div>
-                     <div class="text-[8px] text-white/30 text-center mt-1">Showing History of u_n (Step n)</div>
+                     <div class="text-[8px] text-white/30 text-center mt-1">Showing History of u_n (Real Part or Mag)</div>
                 </div>
 
                 <!-- 5. DATA -->
@@ -282,39 +283,64 @@ const Physics = {
     // Discrete Step Solvers
     discrete: {
         outward: (n, u, p) => {
-            // u[0] is u_n, u[1] is u_{n-1}
-            // u_{n+1} = (1+alpha)u_n
+            // u[0] is u_n (Real scalar)
             const next = (1 + p.alpha) * u[0];
-            return [next, u[0], 0];
+            return [next, u[0]]; // Return [curr, prev]
         },
         backward: (n, u, p) => {
-            // Forbidden: u_{n+1} = (1-alpha)u_n
             const next = (1 - p.alpha) * u[0];
-            return [next, u[0], 0];
+            return [next, u[0]];
         },
         wall: (n, u, p) => {
-            // If n >= N, u = 0. Else propagate.
-            if(n >= p.N) return [0, u[0], 0];
+            if(n >= p.N) return [0, u[0]];
             const next = (1 + p.alpha) * u[0];
-            return [next, u[0], 0]; 
+            return [next, u[0]]; 
         },
         open: (n, u, p) => {
-            // Dynamic open space condition
             const next = (1 + p.alpha) * u[0];
-            return [next, u[0], 0];
+            return [next, u[0]];
         },
         radiation: (n, u, p) => {
-            // u_{n+1} - u_n = alpha * u_n  => u_{n+1} = (1+alpha)u_n
+            // u_{n+1} - u_n = alpha * u_n
             const next = u[0] + p.alpha * u[0];
-            return [next, u[0], 0];
+            return [next, u[0]];
         },
         sine: (n, u, p) => {
-            // Aryabhata's Rule: u_{n+1} - u_n = (u_n - u_{n-1}) - epsilon * u_n
-            // u_{n+1} = 2u_n - u_{n-1} - epsilon * u_n
-            // epsilon related to alpha squared roughly
+            // 2nd order recursion for oscillation (real numbers)
             const eps = p.alpha * p.alpha;
+            // u[0] = u_n, u[1] = u_{n-1}
             const next = 2*u[0] - u[1] - eps*u[0];
-            return [next, u[0], 0];
+            return [next, u[0]];
+        },
+        // --- COMPLEX GENERATORS ---
+        complex_outward: (n, u, p) => {
+            // u = [Re, Im]
+            // u_{n+1} = u_n * e^{ik}
+            const k = p.alpha; // Treat alpha as k
+            const cosK = Math.cos(k), sinK = Math.sin(k);
+            const re = u[0], im = u[1];
+            // Rotation matrix
+            const nextRe = re*cosK - im*sinK;
+            const nextIm = re*sinK + im*cosK;
+            return [nextRe, nextIm];
+        },
+        complex_pml: (n, u, p) => {
+            // u = [Re, Im]
+            // u_{n+1} = u_n * e^{ik - sigma}
+            let sigma = 0;
+            if(n >= p.N) {
+                // Quadratic sigma ramp inside PML
+                const dist = n - p.N;
+                sigma = 0.05 * (dist * 0.1) ** 2; 
+            }
+            const k = p.alpha;
+            const decay = Math.exp(-sigma);
+            const cosK = Math.cos(k), sinK = Math.sin(k);
+            const re = u[0], im = u[1];
+            
+            const nextRe = (re*cosK - im*sinK) * decay;
+            const nextIm = (re*sinK + im*cosK) * decay;
+            return [nextRe, nextIm];
         }
     }
 };
@@ -323,49 +349,66 @@ const Physics = {
 const Models = [
     { 
         id: 'outward', 
-        title: 'The Outward Generator', 
+        title: 'The Outward Generator (Real)', 
         eq: 'u_{n+1} = (1+\\alpha)u_n', 
-        desc: 'Standard generator rule. Produces the next state using only the previous state. Pure recursion with no reference to future steps.',
-        init: [1, 1, 0], // u_0, u_{-1}
+        desc: 'Standard generator rule. Exponential growth/decay based on alpha.',
+        init: [1, 1], // u_0, u_{-1}
         p: (k, n_val) => ({alpha: k}),
-        fn: 'outward'
+        fn: 'outward',
+        complex: false
     },
     { 
         id: 'backward', 
-        title: 'Forbidden Backward', 
+        title: 'Forbidden Backward (Real)', 
         eq: 'u_{n+1} = (1-\\alpha)u_n', 
-        desc: 'Mathematically valid but forbidden. Represents a backward-moving component. Sommerfeld condition = Do not use this generator.',
-        init: [1, 1, 0],
+        desc: 'Forbidden generator representing backward motion.',
+        init: [1, 1],
         p: (k, n_val) => ({alpha: k}),
-        fn: 'backward'
-    },
-    { 
-        id: 'radiation', 
-        title: 'Discrete Radiation', 
-        eq: 'u_{n+1} - u_n = \\alpha u_n', 
-        desc: 'The exact discrete analogue of the radiation condition. Local, iterative, directional, causal.',
-        init: [1, 1, 0],
-        p: (k, n_val) => ({alpha: k}),
-        fn: 'radiation'
+        fn: 'backward',
+        complex: false
     },
     { 
         id: 'wall', 
         title: 'Wall vs Open Space', 
         eq: '\\text{If } n \\ge N, u_n = 0', 
-        desc: 'A wall is fixed by a value (0). Open space is fixed by a rule of continuation. Use slider N to set wall.',
-        init: [1, 1, 0],
+        desc: 'Discrete wall condition.',
+        init: [1, 1],
         p: (k, n_val) => ({alpha: k, N: n_val}),
         fn: 'wall',
-        hasWall: true
+        hasWall: true,
+        complex: false
     },
     { 
         id: 'sine', 
         title: 'Aryabhata Sine Rule', 
-        eq: 'u_{n+1} - u_n = (u_n - u_{n-1}) - \\epsilon u_n', 
-        desc: 'Historical 2nd-order discrete generator for oscillations (sine tables). Uses two previous states.',
-        init: [0, -0.1, 0], // Start near 0 with slope
+        eq: 'u_{n+1} = 2u_n - u_{n-1} - \\epsilon u_n', 
+        desc: 'Historical 2nd-order recursion for oscillation using real numbers.',
+        init: [0, -0.1], 
         p: (k, n_val) => ({alpha: k}),
-        fn: 'sine'
+        fn: 'sine',
+        complex: false
+    },
+    { 
+        id: 'complex_outward', 
+        title: 'Complex Causal Wave (e^ikx)', 
+        eq: 'u_{n+1} = u_n e^{ik}', 
+        desc: 'The fundamental wave solution. Visualizes u\' = iku as a spiral in 3D (Re, Im, Step).',
+        init: [1, 0], // Re=1, Im=0
+        p: (k, n_val) => ({alpha: k * 2}), // Scale k for visibility
+        fn: 'complex_outward',
+        complex: true
+    },
+    { 
+        id: 'complex_pml', 
+        title: 'PML Absorber (Complex)', 
+        eq: 'u_{n+1} = u_n e^{ik - \\sigma(n)}', 
+        desc: 'Perfectly Matched Layer. The wave propagates purely until step N, then decays without reflection.',
+        init: [1, 0],
+        p: (k, n_val) => ({alpha: k * 2, N: n_val}),
+        fn: 'complex_pml',
+        hasWall: true,
+        wallTitle: 'PML Start (N)',
+        complex: true
     }
 ];
 
@@ -594,13 +637,25 @@ const App = {
 
     populateMenu() {
         const l = document.getElementById('algo-list');
-        Models.forEach(m => {
-            const b = document.createElement('button');
-            b.className = "w-full text-left bg-white/5 border border-white/5 p-4 rounded mb-2 hover:border-amber-500/30 transition flex justify-between items-center group active:bg-white/10";
-            b.innerHTML = `<div><div class="font-bold text-xs group-hover:text-amber-400 transition">${m.title}</div><div class="text-[9px] opacity-60 font-mono mt-0.5">${m.eq}</div></div><i class="fas fa-play text-[10px] opacity-20 group-hover:opacity-100 transition"></i>`;
-            b.onclick = () => this.loadModel(m);
-            l.appendChild(b);
-        });
+        l.innerHTML = ''; // Clear to prevent duplicates on reload
+        
+        // Categorize for clarity
+        const renderCat = (title, models) => {
+            const h = document.createElement('h3');
+            h.className = "text-[9px] font-bold opacity-40 mb-2 border-l-2 border-amber-500 pl-2 tracking-widest mt-6 first:mt-0 uppercase";
+            h.innerText = title; l.appendChild(h);
+            
+            models.forEach(m => {
+                const b = document.createElement('button');
+                b.className = "w-full text-left bg-white/5 border border-white/5 p-4 rounded mb-2 hover:border-amber-500/30 transition flex justify-between items-center group active:bg-white/10";
+                b.innerHTML = `<div><div class="font-bold text-xs group-hover:text-amber-400 transition">${m.title}</div><div class="text-[9px] opacity-60 font-mono mt-0.5">${m.eq}</div></div><i class="fas fa-play text-[10px] opacity-20 group-hover:opacity-100 transition"></i>`;
+                b.onclick = () => this.loadModel(m);
+                l.appendChild(b);
+            });
+        };
+
+        renderCat("Classical (Scalar)", Models.filter(m => !m.complex));
+        renderCat("Quantum / Wave (Complex)", Models.filter(m => m.complex));
     },
 
     loadModel(m) {
@@ -611,8 +666,14 @@ const App = {
         document.getElementById('sim-title').innerText = m.title;
         katex.render(m.eq, document.getElementById('katex-eq'), {throwOnError:false});
         
+        // Toggle Wall Control
         document.getElementById('wall-control').classList.toggle('hidden', !m.hasWall);
-        
+        if(m.hasWall && m.wallTitle) document.getElementById('lbl-n-title').innerText = m.wallTitle;
+        else document.getElementById('lbl-n-title').innerText = "Wall Position (N)";
+
+        // Toggle Phase Label
+        document.getElementById('phase-label').innerText = m.complex ? "Argand Plane (Re vs Im)" : "u_n vs u_{n-1}";
+
         document.getElementById('page-home').classList.add('hidden-left');
         document.getElementById('page-sim').classList.remove('hidden-right');
     },
@@ -644,22 +705,42 @@ const App = {
                 
                 // Log Data
                 if(s===0) {
-                    const u = this.state.y[0];
-                    const u_next = nextY[0];
-                    const delta = u_next - u;
-                    this.state.dataLog.push({n: this.state.step, u: u, d: delta});
+                    const u_real = nextY[0];
+                    const u_imag = this.state.active.complex ? nextY[1] : 0;
+                    const prev_real = this.state.y[0];
+                    const mag = this.state.active.complex ? Math.hypot(u_real, u_imag) : Math.abs(u_real);
+                    
+                    this.state.dataLog.push({n: this.state.step, u: u_real, d: u_real - prev_real});
                     if(this.state.dataLog.length > 500) this.state.dataLog.shift();
                     
                     // Update UI Stats
                     document.getElementById('val-n').innerText = this.state.step;
-                    document.getElementById('val-u').innerText = u.toFixed(4);
-                    document.getElementById('val-du').innerText = delta.toFixed(4);
-                    document.getElementById('val-ratio').innerText = u!==0 ? (u_next/u).toFixed(4) : "Inf";
+                    document.getElementById('val-u').innerText = u_real.toFixed(4);
+                    
+                    if(this.state.active.complex) {
+                        document.getElementById('val-im').innerText = u_imag.toFixed(4);
+                        document.getElementById('val-mag').innerText = mag.toFixed(4);
+                        document.getElementById('val-im').parentElement.classList.remove('hidden');
+                        document.getElementById('val-mag').parentElement.classList.remove('hidden');
+                    } else {
+                        document.getElementById('val-im').parentElement.classList.add('hidden');
+                        document.getElementById('val-mag').parentElement.classList.add('hidden');
+                    }
+
+                    document.getElementById('val-du').innerText = (u_real - prev_real).toFixed(4);
                 }
 
                 // Push to Visual Trajectory
-                // x = step (n), y = value (u_n), z = delta
-                this.state.traj.push({x: this.state.step, y: this.state.y[0], z: nextY[0]-this.state.y[0]});
+                // Scalar: x=n, y=val, z=delta
+                // Complex: x=n, y=Real, z=Imag
+                let pt = {};
+                if(this.state.active.complex) {
+                    pt = {x: this.state.step, y: nextY[0], z: nextY[1]};
+                } else {
+                    pt = {x: this.state.step, y: nextY[0], z: nextY[0] - this.state.y[0]};
+                }
+
+                this.state.traj.push(pt);
                 if(this.state.traj.length > 1000) this.state.traj.shift();
 
                 this.state.y = nextY;
@@ -669,7 +750,8 @@ const App = {
             }
 
             // Updates per frame
-            this.updateGraph(this.state.y[0]);
+            const valForGraph = this.state.active.complex ? Math.hypot(this.state.y[0], this.state.y[1]) : this.state.y[0];
+            this.updateGraph(valForGraph);
             this.updateTable();
             this.updatePhase();
         }
@@ -695,23 +777,25 @@ const App = {
         // 3D Projection Helper
         const proj = (x,y,z) => {
             // Map n (x) to screen X
-            // Map u (y) to screen Y
-            // Center roughly
             const nx = (x - this.state.step + 100) * 5; // Keep current step visible
+            
+            // Map y to screen Y (Vertical)
             const ny = -y * 50; 
             
             if(!this.state.params.is3D) return {x: nx, y: ny};
             
             const yaw = this.state.view.rotX * Math.PI/180;
-            const tilt = 0.5;
             
             let x1 = nx;
-            let z1 = z * 50; // Map delta to depth
+            let z1 = z * 50; // Map z to depth
             
-            // Isometric-ish
+            // Isometric-ish Rotation
+            // x_new = x - z * sin(angle)
+            // y_new = y + z * cos(angle) * tilt
+            
             return {
-                x: x1 - z1,
-                y: ny + (x1+z1)*0.5
+                x: x1 - z1 * 0.5,
+                y: ny + (x1 + z1) * 0.3 * Math.sin(yaw + 1.5) // Hacky tilt
             };
         };
 
@@ -723,13 +807,13 @@ const App = {
         ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y);
         ctx.stroke();
 
-        // Draw Trajectory (The Wave discrete points)
+        // Draw Trajectory
         if(this.state.traj.length > 1) {
             ctx.strokeStyle = '#f59e0b'; // Amber
             ctx.lineWidth = 2/scale;
             if(this.state.params.glow) { ctx.shadowBlur = 15; ctx.shadowColor = '#f59e0b'; }
             
-            // Draw lines connecting steps
+            // Draw lines
             ctx.beginPath();
             for(let i=0; i<this.state.traj.length; i++) {
                 const p = this.state.traj[i];
@@ -739,32 +823,42 @@ const App = {
             ctx.stroke();
             ctx.shadowBlur = 0;
 
-            // Draw Points (Discrete Nature)
-            ctx.fillStyle = '#fff';
-            for(let i=0; i<this.state.traj.length; i+=1) { // Skip some if too dense? No, discrete is key.
-                const p = this.state.traj[i];
-                // Only draw visible points
-                if(p.x < this.state.step - 200) continue;
-                
-                const pt = proj(p.x, p.y, p.z);
-                ctx.beginPath(); ctx.arc(pt.x, pt.y, 2/scale, 0, 6.28); ctx.fill();
-                
-                // Draw Stems (Discrete signal style)
-                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-                ctx.beginPath(); ctx.moveTo(pt.x, pt.y); 
-                const base = proj(p.x, 0, 0);
-                ctx.lineTo(base.x, base.y);
-                ctx.stroke();
+            // Draw Points or complex structure
+            if(this.state.active.complex) {
+                // Draw 3D corkscrew stems
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                for(let i=0; i<this.state.traj.length; i+=2) {
+                    const p = this.state.traj[i];
+                    if(p.x < this.state.step - 150) continue;
+                    const pt = proj(p.x, p.y, p.z);
+                    const base = proj(p.x, 0, 0);
+                    ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(base.x, base.y); ctx.stroke();
+                }
+            } else {
+                // Scalar stems
+                ctx.fillStyle = '#fff';
+                for(let i=0; i<this.state.traj.length; i+=1) {
+                    const p = this.state.traj[i];
+                    if(p.x < this.state.step - 200) continue;
+                    const pt = proj(p.x, p.y, p.z);
+                    ctx.beginPath(); ctx.arc(pt.x, pt.y, 2/scale, 0, 6.28); ctx.fill();
+                    
+                    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                    ctx.beginPath(); ctx.moveTo(pt.x, pt.y); 
+                    const base = proj(p.x, 0, 0);
+                    ctx.lineTo(base.x, base.y);
+                    ctx.stroke();
+                }
             }
         }
         
-        // Draw Wall if active
-        if(this.state.active.id === 'wall') {
+        // Draw Wall/PML Marker
+        if(this.state.active.hasWall) {
             const wallN = this.state.params.N;
             const ptTop = proj(wallN, 5, 0);
             const ptBot = proj(wallN, -5, 0);
             
-            ctx.strokeStyle = '#ef4444'; // Red Wall
+            ctx.strokeStyle = '#ef4444'; 
             ctx.lineWidth = 4/scale;
             ctx.setLineDash([5, 5]);
             ctx.beginPath(); ctx.moveTo(ptTop.x, ptTop.y); ctx.lineTo(ptBot.x, ptBot.y); ctx.stroke();
@@ -773,7 +867,7 @@ const App = {
             // Text label
             ctx.fillStyle = '#ef4444';
             ctx.font = `${10/scale}px monospace`;
-            ctx.fillText(`WALL N=${wallN}`, ptTop.x, ptTop.y - 10/scale);
+            ctx.fillText(this.state.active.wallTitle || `WALL N=${wallN}`, ptTop.x, ptTop.y - 10/scale);
         }
 
         ctx.restore();
@@ -858,15 +952,23 @@ const App = {
     },
     updatePhase() { 
         if(document.getElementById('tab-phase').classList.contains('hidden')) return;
-        // u_n vs u_{n-1}
         const ctx = document.getElementById('phaseCanvas').getContext('2d'); 
         const w = ctx.canvas.width; 
-        const u = this.state.y[0];
-        const u_prev = this.state.y[1];
-        // Center roughly (assuming values around -2 to 2)
         const scale = 20; 
+        
         ctx.fillStyle = 'rgba(245, 158, 11, 0.5)'; 
-        ctx.fillRect(w/2 + u*scale, w/2 - u_prev*scale, 2, 2); 
+
+        if(this.state.active.complex) {
+            // Re vs Im (Argand)
+            const re = this.state.y[0];
+            const im = this.state.y[1];
+            ctx.fillRect(w/2 + re*scale, w/2 - im*scale, 2, 2);
+        } else {
+            // u_n vs u_{n-1}
+            const u = this.state.y[0];
+            const u_prev = this.state.y[1];
+            ctx.fillRect(w/2 + u*scale, w/2 - u_prev*scale, 2, 2); 
+        }
     },
     
     exportCSV() { let c = "Step,Value,Delta\n"; this.state.dataLog.forEach(p => c += `${p.n},${p.u},${p.d}\n`); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([c], {type:'text/csv'})); a.download = 'discrete_causal_data.csv'; a.click(); },
