@@ -491,8 +491,94 @@ const App = {
                 </div>
             </div>
         `;
+        
+        const boundaryContent = `
+            <hr class="border-white/10 my-8">
+            <h2 class="text-xl font-bold text-amber-400 mb-4 border-b border-white/10 pb-2">Part III: 1D Boundary Physics</h2>
+            <div class="space-y-6">
+                <!-- 1. Boundary Conditions -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">1. Boundary conditions = physics (1D)</h3>
+                    <p>Take a single real variable $x$. A physical quantity $u(x)$ (temp, displacement, etc.) at a wall ($x=0$) is fixed by ordinary conditions:</p>
+                    <div class="grid grid-cols-1 gap-2 mt-2 text-xs opacity-80 pl-2 border-l border-amber-500/30">
+                        <div>Fixed Value: $u(0) = T_0$ (Temp) or $u(0)=0$ (Clamp)</div>
+                        <div>No Flow: $\\frac{du}{dx}(0) = 0$ (Insulated/Free)</div>
+                    </div>
+                    <p class="mt-2 text-[9px]">These fix value or slope at a point.</p>
+                </div>
 
-        t.innerHTML = discreteContent + continuousContent;
+                <!-- 2. No Wall -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">2. What if there is no wall?</h3>
+                    <p>If space is unbounded ($x \\to +\\infty$), we cannot fix $u(L)=0$. We need a condition that acts "as if" space continues forever.</p>
+                </div>
+
+                <!-- 3. Waves -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">3. The Key Idea (1D Waves)</h3>
+                    <p>A traveling wave $u(x) = A e^{ikx}$ has a crucial property:</p>
+                    <div class="py-2 text-center text-amber-100">$$ \\frac{du}{dx} = ik u $$</div>
+                    <p>Differentiation reproduces the function. This identifies a pure outgoing wave.</p>
+                </div>
+
+                <!-- 4. Radiation Condition -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">4. The Radiation Condition</h3>
+                    <p>It relates slope to value, acting like a one-way valve:</p>
+                    <div class="boxed-math py-3">$$ \\frac{du}{dx}(L) = ik\,u(L) $$</div>
+                    <p>No inward-moving solution ($e^{-ikx}$) satisfies this sign.</p>
+                </div>
+
+                <!-- 5. Limit Rule -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">5. Behavior at a Limit</h3>
+                    <p>Written properly using limits:</p>
+                    <div class="boxed-math py-3">$$ \\lim_{x \\to +\\infty} \\left( \\frac{du}{dx} - ik\,u \\right) = 0 $$</div>
+                    <p>As we move out, the function must increasingly resemble a pure outgoing wave. Nothing is fixed at a point.</p>
+                </div>
+
+                <!-- 6. Decay -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">6. Energy Spreading (Decay)</h3>
+                    <p>Real waves decay (e.g., $u \\sim \\frac{1}{x}e^{ikx}$).</p>
+                    <div class="py-2 text-center text-amber-100">$$ \\frac{du}{dx} \\approx \\left( ik - \\frac{1}{x} \\right) u $$</div>
+                    <p>As $x \\to \\infty$, the $1/x$ term vanishes, recovering the radiation condition asymptotically.</p>
+                </div>
+
+                <!-- 7. Historical -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">7. Historical Note</h3>
+                    <p>Sommerfeld formalized this: You cannot define "outgoing" by values at a point, but by behavior at infinity.</p>
+                </div>
+
+                <!-- 8. Computers -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">8. Why computers struggled</h3>
+                    <p>Computers can't go to infinity. They use a layer (PML) where waves decay:</p>
+                    <div class="py-2 text-center text-amber-100">$$ u(x) \\sim e^{-\\alpha x} e^{ikx} \\implies \\frac{du}{dx} = (ik - \\alpha)u $$</div>
+                    <p>This controlled decay prevents reflection.</p>
+                </div>
+
+                <!-- 9. Summary -->
+                <div>
+                    <h3 class="text-amber-400 font-bold uppercase mb-2 text-xs">9. Single-Variable Summary</h3>
+                    <div class="grid grid-cols-2 gap-4 text-xs border border-white/10 rounded p-3 mt-2">
+                        <div class="text-center border-r border-white/10">
+                            <div class="text-amber-400 font-bold mb-1">WALL</div>
+                            <div>$u(L)=0$</div>
+                            <div class="text-[9px] opacity-60 mt-1">Constrains Point Value</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-amber-400 font-bold mb-1">OPEN</div>
+                            <div>$\\lim (u' - iku) = 0$</div>
+                            <div class="text-[9px] opacity-60 mt-1">Constrains Infinite Behavior</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        t.innerHTML = discreteContent + continuousContent + boundaryContent;
         
         // Render Math via Auto-Render Extension
         if(window.renderMathInElement) {
